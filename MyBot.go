@@ -46,7 +46,7 @@ func getDefeatableOpponents(fromLocation hlt.Location) []hlt.Direction {
 			}
 		}
 	}
-	log.Printf("Returning directions for %v", fromLocation)
+	log.Printf("Returning directions for %v (%v)", fromLocation, directions)
 	return directions
 }
 
@@ -104,19 +104,13 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 
 func shouldAttack(myLocation hlt.Location, direction hlt.Direction) bool {
 	if gameMap.GetSite(myLocation, direction).Owner != neutralOwner {
+		log.Printf("Not a neutral neighbour, attack!")
 		return true
 	}
-	if getStrength(myLocation) < 225 {
+	if getStrength(myLocation) > 225 {
 		return true
 	}
-	if getStrength(myLocation) > 50 {
-		if getStrength(myLocation)-2 > gameMap.GetSite(myLocation, direction).Strength {
-			return true
-		}
-		return false
-	} else {
-		return getStrength(myLocation) > gameMap.GetSite(myLocation, direction).Strength
-	}
+	return getStrength(myLocation) > gameMap.GetSite(myLocation, direction).Strength
 }
 
 func move(loc hlt.Location) hlt.Move {
