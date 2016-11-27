@@ -10,6 +10,7 @@ import (
 
 var gameMap hlt.GameMap
 var conn hlt.Connection
+var neutralOwner int
 
 func init() {
 	fh, err := os.Create("game.log")
@@ -102,11 +103,14 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 }
 
 func shouldAttack(myLocation hlt.Location, direction hlt.Direction) bool {
-	if getStrength(myLocation) == 255 {
+	if gameMap.GetSite(myLocation, direction).Owner != neutralOwner {
+		return true
+	}
+	if getStrength(myLocation) < 225 {
 		return true
 	}
 	if getStrength(myLocation) > 50 {
-		if getStrength(myLocation)+10 > gameMap.GetSite(myLocation, direction).Strength {
+		if getStrength(myLocation)-10 > gameMap.GetSite(myLocation, direction).Strength {
 			return true
 		}
 		return false
@@ -125,6 +129,7 @@ func move(loc hlt.Location) hlt.Move {
 
 func main() {
 	conn, gameMap = hlt.NewConnection("StillSortOfRandom")
+	neutralOwner = gameMap.GetSite(hlt.NewLocation(0, 0), hlt.STILL).Owner
 	for {
 		var moves hlt.MoveSet
 		gameMap = conn.GetFrame()
