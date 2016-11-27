@@ -87,7 +87,7 @@ func getWeakestDirection(fromLocation hlt.Location, directions []hlt.Direction) 
 func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 	log.Printf("Finding best direction for %v", fromLocation)
 	if !hasEnemyNeighBourgh(fromLocation) {
-		if getStrength(fromLocation) < 50 {
+		if getStrength(fromLocation) < 40 {
 			log.Printf("Recommendation, standing still for %v", fromLocation)
 			return hlt.STILL
 		}
@@ -110,7 +110,7 @@ func shouldAttack(myLocation hlt.Location, direction hlt.Direction) bool {
 		return true
 	}
 	if getStrength(myLocation) > 50 {
-		if getStrength(myLocation)-10 > gameMap.GetSite(myLocation, direction).Strength {
+		if getStrength(myLocation)-2 > gameMap.GetSite(myLocation, direction).Strength {
 			return true
 		}
 		return false
