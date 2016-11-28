@@ -54,13 +54,23 @@ func getClosestEnemyDirection(fromLocation hlt.Location) hlt.Direction {
 	closest := 255
 	closestDirection := hlt.Direction(rand.Intn(5))
 	var currentLocation hlt.Location
+	closestDirectionIsOpponent := false
 	for _, direction := range hlt.CARDINALS {
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
 		for distance := 0; distance < 30; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
-			if gameMap.GetSite(currentLocation, hlt.STILL).Owner != conn.PlayerTag {
-				if distance < closest {
+			locationTileOwner := gameMap.GetSite(currentLocation, hlt.STILL).Owner
+			isOpponent := locationTileOwner != neutralOwner
+			if locationTileOwner != conn.PlayerTag {
+				if isOpponent && !closestDirectionIsOpponent {
+					closest = distance
+					closestDirection = direction
+					closestDirectionIsOpponent = true
+				} else if isOpponent && distance < closest {
+					closest = distance
+					closestDirection = direction
+				} else if distance < closest {
 					closest = distance
 					closestDirection = direction
 				}
@@ -84,10 +94,25 @@ func getWeakestDirection(fromLocation hlt.Location, directions []hlt.Direction) 
 	return weakestDirection
 }
 
+func getFriendlyNeighbours(fromLocation hlt.Location) hlt.Direction {
+	weakest := 255
+	var weakestDirection hlt.Direction = hlt.STILL
+	for _, direction := range hlt.CARDINALS {
+		if gameMap.GetSite(fromLocation, direction).Strength < weakest && gameMap.GetSite(fromLocation, direction).Owner == conn.PlayerTag {
+			weakest = gameMap.GetSite(fromLocation, direction).Strength
+			weakestDirection = direction
+		}
+	}
+	return weakestDirection
+}
+
 func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 	log.Printf("Finding best direction for %v", fromLocation)
 	if !hasEnemyNeighBourgh(fromLocation) {
 		if getStrength(fromLocation) < 40 {
+			if rand.Intn(100) < 10 {
+				return getFriendlyNeighbours(fromLocation)
+			}
 			log.Printf("Recommendation, standing still for %v", fromLocation)
 			return hlt.STILL
 		}
