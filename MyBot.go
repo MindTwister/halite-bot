@@ -60,7 +60,7 @@ func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 
 func getLocationValue(loc hlt.Location) int {
 	site := gameMap.GetSite(loc, hlt.STILL)
-	return site.Production*10 - site.Strength
+	return site.Production*25 - site.Strength
 }
 
 func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
@@ -176,7 +176,8 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 		log.Printf("Found defeatable neutral to %v", fromLocation)
 		return dn[rand.Intn(len(dn))]
 	}
-	if locationStrength > 35 {
+	site := gameMap.GetSite(fromLocation, hlt.STILL)
+	if getStrength(fromLocation) > site.Production*10 || getStrength(fromLocation) > 100 {
 		cdo := getClosestStrongestOpponents(fromLocation)
 		if len(cdo) > 0 && rand.Intn(100) > 25 {
 			return cdo[rand.Intn(len(cdo))]
