@@ -2,4 +2,6 @@
 
 export GOPATH="$(pwd)"
 
-./halite -d "30 30" "go run MyBot.go" "go run RandomBot.go"
+go build -o mybot MyBot.go
+
+./halite -d "45 45" "./mybot --profile" "go run RandomBot.go"
