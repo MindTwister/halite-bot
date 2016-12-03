@@ -3,9 +3,8 @@ package main
 import (
 	"hlt"
 	"log"
-	"os"
-
 	"math/rand"
+	"os"
 )
 
 var gameMap hlt.GameMap
@@ -20,14 +19,49 @@ func init() {
 	log.SetOutput(fh)
 }
 
-func hasEnemyNeighBourgh(loc hlt.Location) bool {
+func hasEnemyNeighbour(loc hlt.Location) bool {
 	for i := 1; i < 5; i++ {
 		direction := hlt.Direction(i)
-		if gameMap.GetSite(loc, direction).Owner != conn.PlayerTag {
+		siteOwner := gameMap.GetSite(loc, direction).Owner
+		if siteOwner != conn.PlayerTag {
 			return true
 		}
 	}
 	return false
+}
+
+func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
+	strongest := 0
+	for i := 1; i < 5; i++ {
+		direction := hlt.Direction(i)
+		siteOwner := gameMap.GetSite(loc, direction).Owner
+		siteStrength := gameMap.GetSite(loc, direction).Strength
+		if siteOwner != conn.PlayerTag && siteOwner != neutralOwner && siteStrength >= strongest {
+			if strongest < siteStrength {
+				d = make([]hlt.Direction, 0)
+				strongest = siteStrength
+			}
+			d = append(d, direction)
+		}
+	}
+	return d
+}
+
+func getWeakestNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
+	weakest := 255
+	for i := 1; i < 5; i++ {
+		direction := hlt.Direction(i)
+		siteOwner := gameMap.GetSite(loc, direction).Owner
+		siteStrength := gameMap.GetSite(loc, direction).Strength
+		if siteOwner == neutralOwner && siteStrength <= weakest {
+			if weakest > siteStrength {
+				d = make([]hlt.Direction, 0)
+				weakest = siteStrength
+			}
+			d = append(d, direction)
+		}
+	}
+	return d
 }
 
 func getStrength(loc hlt.Location) int {
@@ -35,107 +69,72 @@ func getStrength(loc hlt.Location) int {
 	return gameMap.GetSite(loc, hlt.STILL).Strength
 }
 
-func getDefeatableOpponents(fromLocation hlt.Location) []hlt.Direction {
+func getDefeatableNeutrals(fromLocation hlt.Location) (d []hlt.Direction) {
 	log.Printf("Getting directions for %v", fromLocation)
-	directions := make([]hlt.Direction, 0)
-	for i := 1; i < 5; i++ {
-		direction := hlt.Direction(i)
-		if gameMap.GetSite(fromLocation, direction).Owner != conn.PlayerTag {
-			if shouldAttack(fromLocation, direction) {
-				directions = append(directions, direction)
-			}
+	directions := getWeakestNeutralNeighbours(fromLocation)
+	for _, direction := range directions {
+		if shouldAttack(fromLocation, direction) {
+			d = append(d, direction)
 		}
 	}
-	log.Printf("Returning directions for %v (%v)", fromLocation, directions)
-	return directions
+	log.Printf("Returning directions for %v (%v)", fromLocation, d)
+	return d
 }
 
-func getClosestEnemyDirection(fromLocation hlt.Location) hlt.Direction {
+func getClosestCummulativeDefeatable(fromLocation hlt.Location) []hlt.Direction {
 	closest := 255
-	closestDirection := hlt.Direction(rand.Intn(5))
+	closestDirections := make([]hlt.Direction, 0)
 	var currentLocation hlt.Location
-	closestDirectionIsOpponent := false
 	for _, direction := range hlt.CARDINALS {
+		strengthAtDestination := getStrength(fromLocation)
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
-		for distance := 0; distance < 30; distance++ {
+		for distance := 0; distance < gameMap.Height; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
 			locationTileOwner := gameMap.GetSite(currentLocation, hlt.STILL).Owner
-			isOpponent := locationTileOwner != neutralOwner
 			if locationTileOwner != conn.PlayerTag {
-				if isOpponent && !closestDirectionIsOpponent {
+				if distance < closest && strengthAtDestination > getStrength(currentLocation) {
 					closest = distance
-					closestDirection = direction
-					closestDirectionIsOpponent = true
-				} else if isOpponent && distance < closest {
-					closest = distance
-					closestDirection = direction
-				} else if distance < closest {
-					closest = distance
-					closestDirection = direction
+					closestDirections = make([]hlt.Direction, 0)
+				}
+				if distance == closest && strengthAtDestination > getStrength(currentLocation) {
+					closestDirections = append(closestDirections, direction)
 				}
 				break
+			} else {
+				strengthAtDestination += getStrength(currentLocation)
 			}
 		}
 	}
-	log.Printf("Closest enemy is %v away towards %v", closest, closestDirection)
-	return closestDirection
-}
-
-func getWeakestDirection(fromLocation hlt.Location, directions []hlt.Direction) hlt.Direction {
-	weakest := 255
-	var weakestDirection hlt.Direction
-	for _, direction := range directions {
-		if gameMap.GetSite(fromLocation, direction).Strength < weakest {
-			weakest = gameMap.GetSite(fromLocation, direction).Strength
-			weakestDirection = direction
-		}
-	}
-	return weakestDirection
-}
-
-func getFriendlyNeighbours(fromLocation hlt.Location) hlt.Direction {
-	weakest := 255
-	var weakestDirection hlt.Direction = hlt.STILL
-	for _, direction := range hlt.CARDINALS {
-		if gameMap.GetSite(fromLocation, direction).Strength < weakest && gameMap.GetSite(fromLocation, direction).Owner == conn.PlayerTag {
-			weakest = gameMap.GetSite(fromLocation, direction).Strength
-			weakestDirection = direction
-		}
-	}
-	return weakestDirection
+	log.Printf("Closest opponent is %v away towards %v", closest, closestDirections)
+	return closestDirections
 }
 
 func getBestDirection(fromLocation hlt.Location) hlt.Direction {
-	log.Printf("Finding best direction for %v", fromLocation)
-	if !hasEnemyNeighBourgh(fromLocation) {
-		if getStrength(fromLocation) < 40 {
-			if rand.Intn(100) < 10 {
-				return getFriendlyNeighbours(fromLocation)
-			}
-			log.Printf("Recommendation, standing still for %v", fromLocation)
-			return hlt.STILL
+	so := getStrongestOpponentNeighbours(fromLocation)
+	if len(so) > 0 {
+		log.Printf("Found opponent to %v", fromLocation)
+		return so[rand.Intn(len(so))]
+	}
+	dn := getDefeatableNeutrals(fromLocation)
+	if len(dn) > 0 {
+		log.Printf("Found defeatable neutral to %v", fromLocation)
+		return dn[rand.Intn(len(dn))]
+	}
+	if getStrength(fromLocation) > 35 {
+		cd := getClosestCummulativeDefeatable(fromLocation)
+		if len(cd) > 0 && rand.Intn(100) > 25 {
+			return cd[rand.Intn(len(cd))]
 		}
-		return getClosestEnemyDirection(fromLocation)
+		if rand.Intn(100) > 20 && !hasEnemyNeighbour(fromLocation) {
+			return hlt.Direction(1 + rand.Intn(4))
+		}
 	}
-	availableDirections := getDefeatableOpponents(fromLocation)
-	if len(availableDirections) > 0 {
-		log.Printf("Attacking a random direction %v", fromLocation)
-		return getWeakestDirection(fromLocation, availableDirections)
-	}
-	log.Printf("Recommendation, standing still for %v", fromLocation)
 	return hlt.STILL
 }
 
-func shouldAttack(myLocation hlt.Location, direction hlt.Direction) bool {
-	if gameMap.GetSite(myLocation, direction).Owner != neutralOwner {
-		log.Printf("Not a neutral neighbour, attack!")
-		return true
-	}
-	if getStrength(myLocation) > 225 {
-		return true
-	}
-	return getStrength(myLocation) > gameMap.GetSite(myLocation, direction).Strength
+func shouldAttack(l hlt.Location, d hlt.Direction) bool {
+	return getStrength(l) > getStrength(gameMap.GetLocation(l, d))
 }
 
 func move(loc hlt.Location) hlt.Move {
