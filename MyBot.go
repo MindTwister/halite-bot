@@ -38,12 +38,14 @@ func hasEnemyNeighbour(loc hlt.Location) bool {
 
 func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	strongest := 0
+	isTooWeakToIgnore := make([]hlt.Direction, 0)
 	for i := 1; i < 5; i++ {
 		direction := hlt.Direction(i)
 		siteOwner := gameMap.GetSite(loc, direction).Owner
 		siteStrength := gameMap.GetSite(loc, direction).Strength
 		if siteStrength < 5 && siteOwner != conn.PlayerTag {
-			return []hlt.Direction{direction}
+			isTooWeakToIgnore = append(isTooWeakToIgnore, direction)
+			continue
 		}
 		if siteOwner != conn.PlayerTag && siteOwner != neutralOwner && siteStrength >= strongest {
 			if strongest < siteStrength {
@@ -53,7 +55,7 @@ func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 			d = append(d, direction)
 		}
 	}
-	return d
+	return append(d, isTooWeakToIgnore...)
 }
 
 func getLocationValue(loc hlt.Location) int {
