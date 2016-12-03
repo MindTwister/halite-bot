@@ -42,6 +42,9 @@ func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 		direction := hlt.Direction(i)
 		siteOwner := gameMap.GetSite(loc, direction).Owner
 		siteStrength := gameMap.GetSite(loc, direction).Strength
+		if siteStrength < 5 && siteOwner != conn.PlayerTag {
+			return []hlt.Direction{direction}
+		}
 		if siteOwner != conn.PlayerTag && siteOwner != neutralOwner && siteStrength >= strongest {
 			if strongest < siteStrength {
 				d = make([]hlt.Direction, 0)
