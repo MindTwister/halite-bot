@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime/pprof"
+	"sync"
 )
 
 var gameMap hlt.GameMap
@@ -32,8 +33,7 @@ func pickRandomDirection(dl []hlt.Direction) hlt.Direction {
 }
 
 func hasEnemyNeighbour(loc hlt.Location) bool {
-	for i := 1; i < 5; i++ {
-		direction := hlt.Direction(i)
+	for _, direction := range hlt.CARDINALS {
 		site := gameMap.GetSite(loc, direction)
 		siteOwner := site.Owner
 		if siteOwner != conn.PlayerTag {
@@ -45,8 +45,7 @@ func hasEnemyNeighbour(loc hlt.Location) bool {
 
 func getOpponentCount(loc hlt.Location) int {
 	count := 0
-	for i := 1; i < 5; i++ {
-		direction := hlt.Direction(i)
+	for _, direction := range hlt.CARDINALS {
 		site := gameMap.GetSite(loc, direction)
 		siteOwner := site.Owner
 		if siteOwner != conn.PlayerTag && siteOwner != neutralOwner {
@@ -59,8 +58,7 @@ func getOpponentCount(loc hlt.Location) int {
 func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	strongest := 0
 	isTooWeakToIgnore := make([]hlt.Direction, 0)
-	for i := 1; i < 5; i++ {
-		direction := hlt.Direction(i)
+	for _, direction := range hlt.CARDINALS {
 		siteOwner := gameMap.GetSite(loc, direction).Owner
 		siteStrength := gameMap.GetSite(loc, direction).Strength
 		if siteStrength < 5 && siteOwner != conn.PlayerTag {
@@ -80,13 +78,12 @@ func getStrongestOpponentNeighbours(loc hlt.Location) (d []hlt.Direction) {
 
 func getLocationValue(loc hlt.Location) int {
 	site := gameMap.GetSite(loc, hlt.STILL)
-	return site.Production*22 - site.Strength
+	return site.Production*site.Production - site.Strength
 }
 
 func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	mostValue := -10000
-	for i := 1; i < 5; i++ {
-		direction := hlt.Direction(i)
+	for _, direction := range hlt.CARDINALS {
 		siteOwner := gameMap.GetSite(loc, direction).Owner
 		siteValue := getLocationValue(loc)
 		if siteOwner == neutralOwner && siteValue >= mostValue {
@@ -155,7 +152,7 @@ func getClosestCummulativeDefeatableNeutral(fromLocation hlt.Location) []hlt.Dir
 		strengthAtDestination := getStrength(fromLocation)
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
-		for distance := 0; distance < 5; distance++ {
+		for distance := 0; distance < 8; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
@@ -214,10 +211,10 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 	if locationStrength < 5 {
 		return hlt.STILL
 	}
-	so := getStrongestOpponentNeighbours(fromLocation)
 	if getOpponentCount(fromLocation) > 2 {
 		return hlt.STILL
 	}
+	so := getStrongestOpponentNeighbours(fromLocation)
 	if len(so) > 0 {
 		log.Printf("Found opponent to %v", fromLocation)
 		return pickRandomDirection(so)
@@ -228,7 +225,7 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 		return pickRandomDirection(dn)
 	}
 	site := gameMap.GetSite(fromLocation, hlt.STILL)
-	if getStrength(fromLocation) > site.Production*4 || getStrength(fromLocation) > 100 {
+	if getStrength(fromLocation) > site.Production*5 || getStrength(fromLocation) > 50 {
 		cdo := getClosestOpponents(fromLocation)
 		if len(cdo) > 0 {
 			return pickRandomDirection(cdo)
@@ -237,12 +234,12 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 		if len(cdn) > 0 && canMerge {
 			return pickRandomDirection(cdn)
 		}
-		co := getClosestOpponents(fromLocation)
-		if len(co) > 0 && canMerge {
-			return pickRandomDirection(co)
+		ce := getClosestEnemy(fromLocation)
+		if len(ce) > 0 && !hasEnemyNeighbour(fromLocation) {
+			return pickRandomDirection(ce)
 		}
 		if rand.Intn(100) > 20 && !hasEnemyNeighbour(fromLocation) {
-			return preferedRandomDirection
+			return hlt.Direction(rand.Intn(2) + 1)
 		}
 	}
 	return hlt.STILL
@@ -261,6 +258,7 @@ func move(loc hlt.Location) hlt.Move {
 }
 
 func main() {
+	var wg sync.WaitGroup
 	shouldProfile := flag.Bool("profile", false, "Should profiling be done")
 	botName := flag.String("name", "StillSortOfRandom", "Bot name")
 	flag.Parse()
@@ -285,10 +283,15 @@ func main() {
 				if gameMap.GetSite(loc, hlt.STILL).Owner == conn.PlayerTag {
 
 					canMerge = !canMerge
-					moves = append(moves, move(loc))
+					wg.Add(1)
+					go func(loc hlt.Location) {
+						moves = append(moves, move(loc))
+						wg.Done()
+					}(loc)
 				}
 			}
 		}
+		wg.Wait()
 		log.Printf("Finished with round, sending moves %v", moves)
 		conn.SendFrame(moves)
 	}
