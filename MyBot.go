@@ -16,11 +16,6 @@ var neutralOwner int
 var preferedRandomDirection hlt.Direction
 
 func init() {
-	fh, err := os.Create("game.log")
-	if err != nil {
-		panic(err)
-	}
-	log.SetOutput(fh)
 }
 
 func isNotMe(loc hlt.Location) bool {
@@ -148,6 +143,24 @@ func getWeakestDefeatableNeighbour(fromLocation hlt.Location) (d []hlt.Direction
 	}
 	return
 }
+func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
+	mostValue := -10000
+	for _, direction := range hlt.CARDINALS {
+		site := gameMap.GetSite(loc, direction)
+		siteOwner := site.Owner
+		siteValue := getSiteValue(site)
+		if siteOwner == neutralOwner && siteValue >= mostValue {
+			if siteValue > mostValue && shouldAttack(loc, direction) {
+				d = make([]hlt.Direction, 0)
+				mostValue = siteValue
+			}
+			if siteValue == mostValue {
+				d = append(d, direction)
+			}
+		}
+	}
+	return d
+}
 
 func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 	locationStrength := getStrength(fromLocation)
@@ -155,13 +168,12 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 		return hlt.STILL
 	}
 	opponentNeighbours := getOpponentDirections(fromLocation)
-	if len(opponentNeighbours) > 2 {
-		return hlt.STILL
-	} else if len(opponentNeighbours) > 0 {
+	if len(opponentNeighbours) > 0 {
 		log.Println("Moving onto opponent")
 		return pickRandomDirection(opponentNeighbours)
 	}
-	defeatableNeighbours := getWeakestDefeatableNeighbour(fromLocation)
+	defeatableNeighbours := getHighestValueNeutralNeighbours(fromLocation)
+
 	if len(defeatableNeighbours) > 0 {
 		log.Println("Conquoring a neutral")
 		return pickRandomDirection(defeatableNeighbours)
@@ -197,26 +209,33 @@ func move(loc hlt.Location) hlt.Move {
 
 }
 
-var lastMoves map[hlt.Location]hlt.Direction = make(map[hlt.Location]hlt.Direction)
+type lastMoves map[hlt.Location]hlt.Direction
+
+var moveHistory [2]lastMoves
 
 func pruneMoves(ml []hlt.Move) []hlt.Move {
-	newLastMoves := make(map[hlt.Location]hlt.Direction)
-	for i, m := range ml {
-		if pm, ok := lastMoves[m.Location]; ok && pm == m.Direction {
-			log.Println(m.Location, "just did that!")
-			ml[i].Direction = hlt.STILL
-		} else {
-			log.Println("No previous move for", m.Location)
+	newMoves := make([]hlt.Move, len(ml))
+	newLastMoves := make(lastMoves)
+	for _, l := range moveHistory {
+		for i, m := range ml {
+			if pm, ok := l[m.Location]; ok && pm == m.Direction {
+				log.Println(m.Location, "just did that!")
+				newMoves = append(newMoves, hlt.Move{m.Location, hlt.STILL})
+				ml[i].Direction = hlt.STILL
+			} else {
+				newMoves = append(newMoves, m)
+			}
+			newLastMoves[m.Location] = m.Direction
 		}
-		newLastMoves[m.Location] = m.Direction
 	}
-	lastMoves = newLastMoves
-	return ml
+	moveHistory[0], moveHistory[1] = moveHistory[1], newLastMoves
+	return newMoves
 }
 
 func main() {
 	var wg sync.WaitGroup
 	shouldProfile := flag.Bool("profile", false, "Should profiling be done")
+	shouldLog := flag.Bool("log", false, "Should logging be done")
 	botName := flag.String("name", "StillSortOfRandom", "Bot name")
 	flag.Parse()
 	conn, gameMap = hlt.NewConnection(*botName)
@@ -224,6 +243,19 @@ func main() {
 	f, _ := os.Create("profile.log")
 	if *shouldProfile {
 		pprof.StartCPUProfile(f)
+	}
+	if *shouldLog {
+		fh, err := os.Create("game.log")
+		if err != nil {
+			panic(err)
+		}
+		log.SetOutput(fh)
+	} else {
+		fh, err := os.Create("/dev/null")
+		if err != nil {
+			panic(err)
+		}
+		log.SetOutput(fh)
 	}
 	count := 0
 	for {
@@ -247,10 +279,10 @@ func main() {
 				}
 			}
 		}
+		wg.Wait()
 		if len(moves) < 10 {
 			moves = pruneMoves(moves)
 		}
-		wg.Wait()
 		log.Printf("Finished with round, sending moves %v", moves)
 		conn.SendFrame(moves)
 	}
