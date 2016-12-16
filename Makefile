@@ -7,4 +7,3 @@ clean:
 
 bot.zip: MyBot.go
 	zip -r bot.zip MyBot.go src
-	cp MyBot.go RandomBot.go
