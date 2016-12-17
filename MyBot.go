@@ -120,7 +120,7 @@ func getClosestEnemy(fromLocation hlt.Location) []hlt.Direction {
 					closestDirections = append(closestDirections, direction)
 				}
 				break
-			} else if locationTileOwner != conn.PlayerTag {
+			} else if locationTileOwner != conn.PlayerTag && site.Strength > 10 {
 				break
 			}
 		}
@@ -215,7 +215,7 @@ func opposite(d hlt.Direction) hlt.Direction {
 
 type lastMoves map[hlt.Location]hlt.Direction
 
-var moveHistory [3]lastMoves
+var moveHistory [2]lastMoves
 
 func pruneMoves(ml []hlt.Move) []hlt.Move {
 	newMoves := make([]hlt.Move, len(ml))
