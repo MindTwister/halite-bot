@@ -215,7 +215,7 @@ func opposite(d hlt.Direction) hlt.Direction {
 
 type lastMoves map[hlt.Location]hlt.Direction
 
-var moveHistory [2]lastMoves
+var moveHistory [3]lastMoves
 
 func pruneMoves(ml []hlt.Move) []hlt.Move {
 	newMoves := make([]hlt.Move, len(ml))
@@ -267,18 +267,22 @@ func main() {
 		log.SetOutput(fh)
 	}
 	count := 0
+
+	lastRoundMoves := 0
 	for {
 		count++
 		preferedRandomDirection = hlt.Direction(rand.Intn(5))
-		if *shouldProfile && count == 300 {
+		if *shouldProfile && (count == 300 || lastRoundMoves > 300) {
 			pprof.StopCPUProfile()
 		}
+		lastRoundMoves = 0
 		var moves hlt.MoveSet
 		gameMap = conn.GetFrame()
 		for y := 0; y < gameMap.Height; y++ {
 			for x := 0; x < gameMap.Width; x++ {
 				loc := hlt.NewLocation(x, y)
 				if gameMap.GetSite(loc, hlt.STILL).Owner == conn.PlayerTag {
+					lastRoundMoves++
 					wg.Add(1)
 
 					go func(loc hlt.Location) {
@@ -289,9 +293,7 @@ func main() {
 			}
 		}
 		wg.Wait()
-		if len(moves) < 10 {
-			moves = pruneMoves(moves)
-		}
+		moves = pruneMoves(moves)
 		log.Printf("Finished with round, sending moves %v", moves)
 		conn.SendFrame(moves)
 	}

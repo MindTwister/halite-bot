@@ -96,7 +96,7 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 }
 
 func getSiteValue(s hlt.Site) int {
-	return s.Production*s.Production - s.Strength
+	return s.Production*s.Production*s.Production - s.Strength
 }
 
 func getClosestEnemy(fromLocation hlt.Location) []hlt.Direction {
@@ -209,26 +209,35 @@ func move(loc hlt.Location) hlt.Move {
 
 }
 
+func opposite(d hlt.Direction) hlt.Direction {
+	return hlt.CARDINALS[(d+1)%4]
+}
+
 type lastMoves map[hlt.Location]hlt.Direction
 
-var moveHistory [2]lastMoves
+var moveHistory [3]lastMoves
 
 func pruneMoves(ml []hlt.Move) []hlt.Move {
 	newMoves := make([]hlt.Move, len(ml))
-	newLastMoves := make(lastMoves)
 	for _, l := range moveHistory {
-		for i, m := range ml {
-			if pm, ok := l[m.Location]; ok && pm == m.Direction {
-				log.Println(m.Location, "just did that!")
+		for _, m := range ml {
+			destinationLocation := gameMap.GetLocation(m.Location, m.Direction)
+			if lm, ok := l[destinationLocation]; ok && lm == opposite(m.Direction) {
 				newMoves = append(newMoves, hlt.Move{m.Location, hlt.STILL})
-				ml[i].Direction = hlt.STILL
 			} else {
 				newMoves = append(newMoves, m)
 			}
-			newLastMoves[m.Location] = m.Direction
 		}
 	}
-	moveHistory[0], moveHistory[1] = moveHistory[1], newLastMoves
+
+	newLastMoves := make(lastMoves)
+	for _, m := range ml {
+		newLastMoves[m.Location] = m.Direction
+	}
+	for i := 0; i < len(moveHistory)-1; i++ {
+		moveHistory[i] = moveHistory[i+1]
+	}
+	moveHistory[len(moveHistory)-1] = newLastMoves
 	return newMoves
 }
 
@@ -280,9 +289,7 @@ func main() {
 			}
 		}
 		wg.Wait()
-		if len(moves) < 10 {
-			moves = pruneMoves(moves)
-		}
+		moves = pruneMoves(moves)
 		log.Printf("Finished with round, sending moves %v", moves)
 		conn.SendFrame(moves)
 	}
