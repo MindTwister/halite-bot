@@ -22,7 +22,8 @@ func isNotMe(loc hlt.Location) bool {
 	return gameMap.GetSite(loc, hlt.STILL).Owner != conn.PlayerTag
 }
 
-func pickRandomDirection(dl []hlt.Direction) hlt.Direction {
+func pickRandomNonReversedDirection(loc hlt.Location, dl []hlt.Direction) hlt.Direction {
+	dl = pruneDirections(loc, dl)
 	return dl[rand.Intn(len(dl))]
 }
 
@@ -76,7 +77,7 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 			locationTileOwner := site.Owner
 
 			locationValue := getSiteValue(site) - distance*distance
-			if distance > 1 && locationTileOwner == neutralOwner && site.Production > 0 {
+			if distance > 1 && locationTileOwner == neutralOwner && (site.Production > 0 || site.Strength == 0) {
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -120,7 +121,7 @@ func getClosestEnemy(fromLocation hlt.Location) []hlt.Direction {
 					closestDirections = append(closestDirections, direction)
 				}
 				break
-			} else if locationTileOwner != conn.PlayerTag && site.Strength > 10 {
+			} else if locationTileOwner != conn.PlayerTag && site.Strength > 5 {
 				break
 			}
 		}
@@ -149,14 +150,12 @@ func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 		site := gameMap.GetSite(loc, direction)
 		siteOwner := site.Owner
 		siteValue := getSiteValue(site)
-		if siteOwner == neutralOwner && siteValue >= mostValue {
-			if siteValue > mostValue && shouldAttack(loc, direction) {
+		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
+			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)
 				mostValue = siteValue
 			}
-			if siteValue == mostValue {
-				d = append(d, direction)
-			}
+			d = append(d, direction)
 		}
 	}
 	return d
@@ -170,29 +169,29 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 	opponentNeighbours := getOpponentDirections(fromLocation)
 	if len(opponentNeighbours) > 0 {
 		log.Println("Moving onto opponent")
-		return pickRandomDirection(opponentNeighbours)
+		return pickRandomNonReversedDirection(fromLocation, opponentNeighbours)
 	}
 	defeatableNeighbours := getHighestValueNeutralNeighbours(fromLocation)
 
 	if len(defeatableNeighbours) > 0 {
 		log.Println("Conquoring a neutral")
-		return pickRandomDirection(defeatableNeighbours)
+		return pickRandomNonReversedDirection(fromLocation, defeatableNeighbours)
 	}
 
 	site := gameMap.GetSite(fromLocation, hlt.STILL)
-	if locationStrength > site.Production*4 || locationStrength > 50 {
+	if site.Production*4 < site.Strength || (len(lastMoves) > 15 && locationStrength > 30) {
 		visibleCloseEnemies := getClosestEnemy(fromLocation)
 		if len(visibleCloseEnemies) > 0 {
 			log.Println("Moving towards enemy")
-			return pickRandomDirection(visibleCloseEnemies)
+			return pickRandomNonReversedDirection(fromLocation, visibleCloseEnemies)
 		}
 		visibleNeutralDirections := getMostValuableNeutralDirections(fromLocation)
 		if len(visibleNeutralDirections) > 0 {
 			log.Println("Moving towards neutral")
-			return pickRandomDirection(visibleNeutralDirections)
+			return pickRandomNonReversedDirection(fromLocation, visibleNeutralDirections)
 		}
 		log.Println("Moving at random")
-		return pickRandomDirection(hlt.Directions)
+		return pickRandomNonReversedDirection(fromLocation, hlt.Directions)
 	}
 	return hlt.STILL
 }
@@ -202,43 +201,56 @@ func shouldAttack(l hlt.Location, d hlt.Direction) bool {
 }
 
 func move(loc hlt.Location) hlt.Move {
-	return hlt.Move{
+	newMove := hlt.Move{
 		Location:  loc,
 		Direction: getBestDirection(loc),
 	}
+	registerMove(newMove)
+	return newMove
 
 }
 
 func opposite(d hlt.Direction) hlt.Direction {
+	if d == hlt.STILL {
+		return hlt.STILL
+	}
 	return hlt.CARDINALS[(d+1)%4]
 }
 
-type lastMoves map[hlt.Location]hlt.Direction
+type moveMap map[hlt.Location]hlt.Direction
 
-var moveHistory [2]lastMoves
+var lastMoves moveMap = make(moveMap)
+var currentMoves moveMap = make(moveMap)
+var rml sync.RWMutex
 
-func pruneMoves(ml []hlt.Move) []hlt.Move {
-	newMoves := make([]hlt.Move, len(ml))
-	for _, l := range moveHistory {
-		for _, m := range ml {
-			destinationLocation := gameMap.GetLocation(m.Location, m.Direction)
-			if lm, ok := l[destinationLocation]; ok && lm == opposite(m.Direction) {
-				newMoves = append(newMoves, hlt.Move{m.Location, hlt.STILL})
-			} else {
-				newMoves = append(newMoves, m)
-			}
+func registerMove(m hlt.Move) {
+	rml.Lock()
+	if _, ok := currentMoves[m.Location]; ok {
+		lastMoves = currentMoves
+		currentMoves = make(moveMap)
+	}
+	currentMoves[m.Location] = m.Direction
+	rml.Unlock()
+}
+
+func pruneDirections(loc hlt.Location, directions []hlt.Direction) []hlt.Direction {
+	newDirections := make([]hlt.Direction, 0)
+	for _, d := range directions {
+
+		destinationLocation := gameMap.GetLocation(loc, d)
+		rml.RLock()
+		if lm, ok := lastMoves[destinationLocation]; ok && lm == opposite(d) {
+
+		} else {
+			newDirections = append(newDirections, d)
 		}
-	}
+		rml.RUnlock()
 
-	newLastMoves := make(lastMoves)
-	for _, m := range ml {
-		newLastMoves[m.Location] = m.Direction
 	}
-	for i := 0; i < len(moveHistory)-1; i++ {
-		moveHistory[i] = moveHistory[i+1]
+	if len(newDirections) == 0 {
+		newDirections = append(newDirections, hlt.STILL)
 	}
-	moveHistory[len(moveHistory)-1] = newLastMoves
-	return newMoves
+	return newDirections
 }
 
 func main() {
@@ -276,6 +288,7 @@ func main() {
 			pprof.StopCPUProfile()
 		}
 		lastRoundMoves = 0
+		var vmoves sync.Mutex
 		var moves hlt.MoveSet
 		gameMap = conn.GetFrame()
 		for y := 0; y < gameMap.Height; y++ {
@@ -286,14 +299,15 @@ func main() {
 					wg.Add(1)
 
 					go func(loc hlt.Location) {
+						vmoves.Lock()
 						moves = append(moves, move(loc))
+						vmoves.Unlock()
 						wg.Done()
 					}(loc)
 				}
 			}
 		}
 		wg.Wait()
-		moves = pruneMoves(moves)
 		log.Printf("Finished with round, sending moves %v", moves)
 		conn.SendFrame(moves)
 	}
