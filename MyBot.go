@@ -12,10 +12,18 @@ import (
 
 var gameMap hlt.GameMap
 var conn hlt.Connection
-var neutralOwner int
+var neutralOwner int = 0
 var preferedRandomDirection hlt.Direction
 
 func init() {
+}
+func hasOnlyFriendlyNeighbours(l hlt.Location) bool {
+	for _, d := range hlt.CARDINALS {
+		if gameMap.GetSite(l, d).Owner != conn.PlayerTag {
+			return false
+		}
+	}
+	return true
 }
 
 func isNotMe(loc hlt.Location) bool {
@@ -71,13 +79,14 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	for _, direction := range hlt.CARDINALS {
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
+		strengthAtEnd := 0
 		for distance := 1; distance < gameMap.Width/2+1; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(site) - distance*distance
-			if distance > 1 && locationTileOwner == neutralOwner && (site.Production > 0 || site.Strength == 0) {
+			locationValue := getSiteValue(site) - distance
+			if getStrength(currentLocation) < strengthAtEnd && (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -87,6 +96,7 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 				}
 				break
 			}
+			strengthAtEnd += site.Strength
 			if isNotMe(currentLocation) {
 				break
 			}
@@ -191,7 +201,9 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 			return pickRandomNonReversedDirection(fromLocation, visibleNeutralDirections)
 		}
 		log.Println("Moving at random")
-		return pickRandomNonReversedDirection(fromLocation, hlt.Directions)
+		if hasOnlyFriendlyNeighbours(fromLocation) {
+			return pickRandomNonReversedDirection(fromLocation, hlt.Directions)
+		}
 	}
 	return hlt.STILL
 }
@@ -281,6 +293,7 @@ func main() {
 	count := 0
 
 	lastRoundMoves := 0
+	var vmoves sync.Mutex
 	for {
 		count++
 		preferedRandomDirection = hlt.Direction(rand.Intn(5))
@@ -288,7 +301,6 @@ func main() {
 			pprof.StopCPUProfile()
 		}
 		lastRoundMoves = 0
-		var vmoves sync.Mutex
 		var moves hlt.MoveSet
 		gameMap = conn.GetFrame()
 		for y := 0; y < gameMap.Height; y++ {
