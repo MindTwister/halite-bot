@@ -12,10 +12,18 @@ import (
 
 var gameMap hlt.GameMap
 var conn hlt.Connection
-var neutralOwner int
+var neutralOwner int = 0
 var preferedRandomDirection hlt.Direction
 
 func init() {
+}
+func hasOnlyFriendlyNeighbours(l hlt.Location) bool {
+	for _, d := range hlt.CARDINALS {
+		if gameMap.GetSite(l, d).Owner != conn.PlayerTag {
+			return false
+		}
+	}
+	return true
 }
 
 func isNotMe(loc hlt.Location) bool {
@@ -76,8 +84,8 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(site) - distance*distance
-			if distance > 1 && locationTileOwner == neutralOwner && (site.Production > 0 || site.Strength == 0) {
+			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction)) - distance
+			if (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -96,8 +104,15 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	return highValueDirections
 }
 
-func getSiteValue(s hlt.Site) int {
-	return s.Production*s.Production*s.Production - s.Strength
+func getSiteValue(l hlt.Location) int {
+	value := getStrength(l)
+	for _, d := range hlt.CARDINALS {
+		s := gameMap.GetSite(l, d)
+		if s.Owner != conn.PlayerTag {
+			value += s.Production*s.Production - s.Strength
+		}
+	}
+	return value
 }
 
 func getClosestEnemy(fromLocation hlt.Location) []hlt.Direction {
@@ -147,9 +162,9 @@ func getWeakestDefeatableNeighbour(fromLocation hlt.Location) (d []hlt.Direction
 func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	mostValue := -10000
 	for _, direction := range hlt.CARDINALS {
-		site := gameMap.GetSite(loc, direction)
-		siteOwner := site.Owner
-		siteValue := getSiteValue(site)
+		l := gameMap.GetLocation(loc, direction)
+		siteOwner := gameMap.GetSite(loc, direction).Owner
+		siteValue := getSiteValue(l)
 		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
 			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)
@@ -191,7 +206,9 @@ func getBestDirection(fromLocation hlt.Location) hlt.Direction {
 			return pickRandomNonReversedDirection(fromLocation, visibleNeutralDirections)
 		}
 		log.Println("Moving at random")
-		return pickRandomNonReversedDirection(fromLocation, hlt.Directions)
+		if hasOnlyFriendlyNeighbours(fromLocation) {
+			return pickRandomNonReversedDirection(fromLocation, hlt.Directions)
+		}
 	}
 	return hlt.STILL
 }
@@ -281,6 +298,7 @@ func main() {
 	count := 0
 
 	lastRoundMoves := 0
+	var vmoves sync.Mutex
 	for {
 		count++
 		preferedRandomDirection = hlt.Direction(rand.Intn(5))
@@ -288,7 +306,6 @@ func main() {
 			pprof.StopCPUProfile()
 		}
 		lastRoundMoves = 0
-		var vmoves sync.Mutex
 		var moves hlt.MoveSet
 		gameMap = conn.GetFrame()
 		for y := 0; y < gameMap.Height; y++ {

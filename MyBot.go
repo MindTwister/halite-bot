@@ -79,14 +79,13 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	for _, direction := range hlt.CARDINALS {
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
-		strengthAtEnd := 0
-		for distance := 1; distance < gameMap.Width/2+1; distance++ {
+		for distance := 0; distance < gameMap.Width/2+1; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(site) - distance
-			if getStrength(currentLocation) < strengthAtEnd && (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
+			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction)) - distance
+			if (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -96,7 +95,6 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 				}
 				break
 			}
-			strengthAtEnd += site.Strength
 			if isNotMe(currentLocation) {
 				break
 			}
@@ -106,8 +104,15 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	return highValueDirections
 }
 
-func getSiteValue(s hlt.Site) int {
-	return s.Production*s.Production*s.Production - s.Strength
+func getSiteValue(l hlt.Location) int {
+	value := getStrength(l)
+	for _, d := range hlt.CARDINALS {
+		s := gameMap.GetSite(l, d)
+		if s.Owner != conn.PlayerTag {
+			value += s.Production*s.Production - s.Strength
+		}
+	}
+	return value
 }
 
 func getClosestEnemy(fromLocation hlt.Location) []hlt.Direction {
@@ -157,9 +162,9 @@ func getWeakestDefeatableNeighbour(fromLocation hlt.Location) (d []hlt.Direction
 func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	mostValue := -10000
 	for _, direction := range hlt.CARDINALS {
-		site := gameMap.GetSite(loc, direction)
-		siteOwner := site.Owner
-		siteValue := getSiteValue(site)
+		l := gameMap.GetLocation(loc, direction)
+		siteOwner := gameMap.GetSite(loc, direction).Owner
+		siteValue := getSiteValue(l)
 		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
 			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)
