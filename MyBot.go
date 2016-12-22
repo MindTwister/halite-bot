@@ -79,12 +79,12 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	for _, direction := range hlt.CARDINALS {
 		currentLocation = fromLocation
 		log.Printf("Looking towards %v", direction)
-		for distance := 0; distance < gameMap.Width/2+1; distance++ {
+		for distance := 1; distance < gameMap.Width/2+1; distance++ {
 			currentLocation = gameMap.GetLocation(currentLocation, direction)
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction)) - distance
+			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction), 0) - distance*distance
 			if (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
 				if highestValue < locationValue {
 					highestValue = locationValue
@@ -104,12 +104,15 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 	return highValueDirections
 }
 
-func getSiteValue(l hlt.Location) int {
-	value := getStrength(l)
+func getSiteValue(l hlt.Location, recurseDepth int) int {
+	value := 0
 	for _, d := range hlt.CARDINALS {
 		s := gameMap.GetSite(l, d)
 		if s.Owner != conn.PlayerTag {
 			value += s.Production*s.Production - s.Strength
+		}
+		if recurseDepth > 0 {
+			value += getSiteValue(gameMap.GetLocation(l, d), recurseDepth-1)
 		}
 	}
 	return value
@@ -164,7 +167,7 @@ func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	for _, direction := range hlt.CARDINALS {
 		l := gameMap.GetLocation(loc, direction)
 		siteOwner := gameMap.GetSite(loc, direction).Owner
-		siteValue := getSiteValue(l)
+		siteValue := getSiteValue(l, 1)
 		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
 			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)
@@ -259,7 +262,9 @@ func pruneDirections(loc hlt.Location, directions []hlt.Direction) []hlt.Directi
 		if lm, ok := lastMoves[destinationLocation]; ok && lm == opposite(d) {
 
 		} else {
-			newDirections = append(newDirections, d)
+			if gameMap.GetSite(loc, d).Owner == conn.PlayerTag || getStrength(loc) > getStrength(destinationLocation) {
+				newDirections = append(newDirections, d)
+			}
 		}
 		rml.RUnlock()
 
