@@ -84,8 +84,8 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction), 0) - distance*distance
-			if (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
+			if (locationTileOwner == neutralOwner) && (site.Production > 0) {
+				locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction), 0) - distance*distance
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -167,7 +167,7 @@ func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	for _, direction := range hlt.CARDINALS {
 		l := gameMap.GetLocation(loc, direction)
 		siteOwner := gameMap.GetSite(loc, direction).Owner
-		siteValue := getSiteValue(l, 1)
+		siteValue := getSiteValue(gameMap.GetLocation(l, direction), 0)
 		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
 			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)

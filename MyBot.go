@@ -47,10 +47,16 @@ func hasEnemyNeighbour(loc hlt.Location) bool {
 }
 
 func getOpponentDirections(loc hlt.Location) (d []hlt.Direction) {
+	strongest := 0
 	for _, direction := range hlt.CARDINALS {
 		site := gameMap.GetSite(loc, direction)
 		siteOwner := site.Owner
-		if siteOwner != conn.PlayerTag && (siteOwner != neutralOwner || site.Strength < 3) {
+
+		if site.Strength >= strongest && siteOwner != conn.PlayerTag && siteOwner != neutralOwner {
+			if site.Strength > strongest {
+				strongest = site.Strength
+				d = make([]hlt.Direction, 0)
+			}
 			d = append(d, direction)
 		}
 	}
@@ -84,8 +90,8 @@ func getMostValuableNeutralDirections(fromLocation hlt.Location) []hlt.Direction
 			site := gameMap.GetSite(currentLocation, hlt.STILL)
 			locationTileOwner := site.Owner
 
-			locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction), 0) - distance*distance
-			if (locationTileOwner == neutralOwner) && (site.Production > 0 || site.Strength == 0) {
+			if (locationTileOwner == neutralOwner) && (site.Production > 0) {
+				locationValue := getSiteValue(gameMap.GetLocation(currentLocation, direction), 0) - distance*distance
 				if highestValue < locationValue {
 					highestValue = locationValue
 					highValueDirections = make([]hlt.Direction, 0)
@@ -155,6 +161,7 @@ func getWeakestDefeatableNeighbour(fromLocation hlt.Location) (d []hlt.Direction
 			site.Owner != conn.PlayerTag &&
 			shouldAttack(fromLocation, direction) {
 			if site.Strength < weakest {
+				weakest = site.Strength
 				d = make([]hlt.Direction, 0)
 			}
 			d = append(d, direction)
@@ -167,7 +174,7 @@ func getHighestValueNeutralNeighbours(loc hlt.Location) (d []hlt.Direction) {
 	for _, direction := range hlt.CARDINALS {
 		l := gameMap.GetLocation(loc, direction)
 		siteOwner := gameMap.GetSite(loc, direction).Owner
-		siteValue := getSiteValue(l, 1)
+		siteValue := getSiteValue(gameMap.GetLocation(l, direction), 0)
 		if siteOwner == neutralOwner && siteValue >= mostValue && shouldAttack(loc, direction) {
 			if siteValue > mostValue {
 				d = make([]hlt.Direction, 0)
@@ -262,7 +269,7 @@ func pruneDirections(loc hlt.Location, directions []hlt.Direction) []hlt.Directi
 		if lm, ok := lastMoves[destinationLocation]; ok && lm == opposite(d) {
 
 		} else {
-			if gameMap.GetSite(loc, d).Owner == conn.PlayerTag || getStrength(loc) > getStrength(destinationLocation) {
+			if (gameMap.GetSite(loc, d).Owner == conn.PlayerTag || gameMap.GetSite(loc, d).Owner != neutralOwner) || getStrength(loc) > getStrength(destinationLocation) {
 				newDirections = append(newDirections, d)
 			}
 		}
